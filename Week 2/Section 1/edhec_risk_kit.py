@@ -1,12 +1,11 @@
 import pandas as pd
 import numpy as np
-import math
 
 def get_ffme_returns():
     """
     Load the Fama-French Dataset for the returns of the Top and Bottom Deciles by MarketCap
     """
-    me_m = pd.read_csv("data/Portfolios_Formed_on_ME_monthly_EW.csv",
+    me_m = pd.read_csv("/Users/sebastiencaron/Desktop/Portfolio Construction with Python/data/Portfolios_Formed_on_ME_monthly_EW.csv",
                        header=0, index_col=0, na_values=-99.99)
     rets = me_m[['Lo 10', 'Hi 10']]
     rets.columns = ['SmallCap', 'LargeCap']
@@ -15,70 +14,27 @@ def get_ffme_returns():
     return rets
 
 
+
 def get_hfi_returns():
     """
     Load and format the EDHEC Hedge Fund Index Returns
     """
-    hfi = pd.read_csv("data/edhec-hedgefundindices.csv",
+    hfi = pd.read_csv("/Users/sebastiencaron/Desktop/Portfolio Construction with Python/data/edhec-hedgefundindices.csv",
                       header=0, index_col=0, parse_dates=True)
     hfi = hfi/100
     hfi.index = hfi.index.to_period('M')
     return hfi
 
-def get_ind_file(filetype):
-    """
-    Load and format the Ken French 30 Industry Portfolios files
-    """
-    known_types = ["returns", "nfirms", "size"]
-    if filetype not in known_types:
-        sep = ','
-        raise ValueError(f'filetype must be one of:{sep.join(known_types)}')
-    if filetype is "returns":
-        name = "vw_rets"
-        divisor = 100
-    elif filetype is "nfirms":
-        name = "nfirms"
-        divisor = 1
-    elif filetype is "size":
-        name = "size"
-        divisor = 1
-    ind = pd.read_csv(f"data/ind30_m_{name}.csv", header=0, index_col=0)/divisor
-    ind.index = pd.to_datetime(ind.index, format="%Y%m").to_period('M')
-    ind.columns = ind.columns.str.strip()
-    return ind
-
 def get_ind_returns():
     """
     Load and format the Ken French 30 Industry Portfolios Value Weighted Monthly Returns
     """
-    return get_ind_file("returns")
+    ind = pd.read_csv("/Users/sebastiencaron/Desktop/Portfolio Construction with Python/data/ind30_m_vw_rets.csv", header=0, index_col=0)/100
+    ind.index = pd.to_datetime(ind.index, format="%Y%m").to_period('M')
+    ind.columns = ind.columns.str.strip()
+    return ind
 
-def get_ind_nfirms():
-    """
-    Load and format the Ken French 30 Industry Portfolios Average number of Firms
-    """
-    return get_ind_file("nfirms")
 
-def get_ind_size():
-    """
-    Load and format the Ken French 30 Industry Portfolios Average size (market cap)
-    """
-    return get_ind_file("size")
-
-                         
-def get_total_market_index_returns():
-    """
-    Load the 30 industry portfolio data and derive the returns of a capweighted total market index
-    """
-    ind_nfirms = get_ind_nfirms()
-    ind_size = get_ind_size()
-    ind_return = get_ind_returns()
-    ind_mktcap = ind_nfirms * ind_size
-    total_mktcap = ind_mktcap.sum(axis=1)
-    ind_capweight = ind_mktcap.divide(total_mktcap, axis="rows")
-    total_market_return = (ind_capweight * ind_return).sum(axis="columns")
-    return total_market_return
-                         
 def skewness(r):
     """
     Alternative to scipy.stats.skew()
@@ -105,13 +61,6 @@ def kurtosis(r):
     return exp/sigma_r**4
 
 
-def compound(r):
-    """
-    returns the result of compounding the set of returns in r
-    """
-    return np.expm1(np.log1p(r).sum())
-
-                         
 def annualize_rets(r, periods_per_year):
     """
     Annualizes a set of returns
@@ -208,7 +157,7 @@ def cvar_historic(r, level=5):
     Computes the Conditional VaR of Series or DataFrame
     """
     if isinstance(r, pd.Series):
-        is_beyond = r <= -var_historic(r, level=level)
+        is_beyond = r <= var_historic(r, level=level)
         return -r[is_beyond].mean()
     elif isinstance(r, pd.DataFrame):
         return r.aggregate(cvar_historic, level=level)
@@ -267,3 +216,55 @@ def plot_ef2(n_points, er, cov):
         "Volatility": vols
     })
     return ef.plot.line(x="Volatility", y="Returns", style=".-")
+
+
+from scipy.optimize import minimize
+def minimize_vol(target_return, er, cov):
+    """
+    target_ret --> Weight vector
+    
+    """
+    n = er.shape[0] #determine the number of assets
+    init_guess = np.repeat(1/n, n) #Initial weight vector is equally distributed
+    bounds = ((0.0, 1),) * n #I don't want to be able to short, multiply a tuple make some copy of it
+    
+    return_is_target = {
+        "type": "eq",
+        "args":(er,),
+        "fun": lambda weights, er: target_return - portfolio_return(weights, er)# We can create a lambda function
+            
+    }
+    weights_sum_to_1 = {
+        "type":"eq",         #{constraints} eq = equalize to 0
+        "fun": lambda weights: np.sum(weights) - 1
+    }
+    results = minimize(portfolio_vol, init_guess,
+                       args = (cov,), method="SLSQP", 
+                       options= {"disp": False},
+                       constraints=(return_is_target, weights_sum_to_1),
+                       bounds = bounds
+                       )
+    return results.x
+
+
+def optimal_weights(n_points, er, cov):
+    """
+    --> generate a list of weights to run the optimizer on to minimize the vol
+    """
+    target_rs = np.linspace(er.min(), er.max(), n_points)
+    weights = [minimize_vol(target_return, er, cov) for target_return in target_rs]
+    return weights
+
+def plot_ef(n_points, er, cov, style=".-"):
+    """
+    Plots the N-asset efficient frontier
+    """
+   
+    weights = optimal_weights(n_points, er ,cov)
+    rets = [portfolio_return(w, er) for w in weights]
+    vols = [portfolio_vol(w, cov) for w in weights]
+    ef = pd.DataFrame({
+        "Returns": rets, 
+        "Volatility": vols
+    })
+    return ef.plot.line(x="Volatility", y="Returns", style=style)
