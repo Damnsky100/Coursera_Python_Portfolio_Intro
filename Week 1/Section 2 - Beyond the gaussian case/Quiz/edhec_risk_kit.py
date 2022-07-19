@@ -133,3 +133,36 @@ def cvar_historic(r, level=5):
         return r.aggregate(cvar_historic, level=level)
     else:
         raise TypeError("Expected r to be a Series or DataFrame")
+
+
+
+def portfolio_return(weights, returns):
+    """
+    Computes the return on a portfolio from constituent returns and weights
+    weights are a numpy array or Nx1 matrix and returns are a numpy array or Nx1 matrix
+    """
+    return weights.T @ returns
+
+
+def portfolio_vol(weights, covmat):
+    """
+    Computes the vol of a portfolio from a covariance matrix and constituent weights
+    weights are a numpy array or N x 1 maxtrix and covmat is an N x N matrix
+    """
+    return (weights.T @ covmat @ weights)**0.5
+
+
+def plot_ef2(n_points, er, cov):
+    """
+    Plots the 2-asset efficient frontier
+    """
+    if er.shape[0] != 2 or er.shape[0] != 2:
+        raise ValueError("plot_ef2 can only plot 2-asset frontiers")
+    weights = [np.array([w, 1-w]) for w in np.linspace(0, 1, n_points)]
+    rets = [portfolio_return(w, er) for w in weights]
+    vols = [portfolio_vol(w, cov) for w in weights]
+    ef = pd.DataFrame({
+        "Returns": rets, 
+        "Volatility": vols
+    })
+    return ef.plot.line(x="Volatility", y="Returns", style=".-")
