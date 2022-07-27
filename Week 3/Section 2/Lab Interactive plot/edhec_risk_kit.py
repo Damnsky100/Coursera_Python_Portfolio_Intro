@@ -460,16 +460,27 @@ def summary_stats(r, riskfree_rate = 0.03):
     }    
     )
     
-def gbm(n_years=10, n_scenarios = 1000, mu = 0.07, sigma =0.15, steps_per_year=12, s_0 = 100.0):
+def gbm(n_years = 10, n_scenarios=1000, mu=0.07, sigma=0.15, steps_per_year=12, s_0=100.0, prices=True):
     """
-    Evolution of a stock price using a Geometric Brownian Motion Model
+    Evolution of Geometric Brownian Motion trajectories, such as for Stock Prices through Monte Carlo
+    :param n_years:  The number of years to generate data for
+    :param n_paths: The number of scenarios/trajectories
+    :param mu: Annualized Drift, e.g. Market Return
+    :param sigma: Annualized Volatility
+    :param steps_per_year: granularity of the simulation
+    :param s_0: initial value
+    :return: a numpy array of n_paths columns and n_years*steps_per_year rows
     """
-    dt = 1 / steps_per_year
-    n_steps = int(n_years * steps_per_year)
-    rets_plus_1 = np.random.normal(size=(n_steps, n_scenarios), loc=(1+mu*dt), scale= (sigma * np.sqrt(dt)))
+    # Derive per-step Model Parameters from User Specifications
+    dt = 1/steps_per_year
+    n_steps = int(n_years*steps_per_year) + 1
+    # the standard way ...
+    # rets_plus_1 = np.random.normal(loc=mu*dt+1, scale=sigma*np.sqrt(dt), size=(n_steps, n_scenarios))
+    # without discretization error ...
+    rets_plus_1 = np.random.normal(loc=(1+mu)**dt, scale=(sigma*np.sqrt(dt)), size=(n_steps, n_scenarios))
     rets_plus_1[0] = 1
-    prices = s_0 * pd.DataFrame(rets_plus_1).cumprod()
-    return prices
+    ret_val = s_0*pd.DataFrame(rets_plus_1).cumprod() if prices else rets_plus_1-1
+    return ret_val
 
 
 def show_gbm(n_scenarios, mu, sigma):
@@ -531,16 +542,3 @@ def show_cppi(n_scenarios=50, mu=0.07, sigma=0.15, m=3, floor=0., riskfree_rate=
         hist_ax.axhline(y=start*floor, ls="--", color="red", linewidth=3)
         hist_ax.annotate(f"Violations: {n_failures} ({p_fail*100:2.2f}%)\nE(shortfall)=${e_shortfall:2.2f}", xy=(.7, .7), xycoords='axes fraction', fontsize=24)
 
-cppi_controls = widgets.interactive(show_cppi,
-                                   n_scenarios=widgets.IntSlider(min=1, max=1000, step=5, value=50), 
-                                   mu=(0., +.2, .01),
-                                   sigma=(0, .3, .05),
-                                   floor=(0, 2, .1),
-                                   m=(1, 5, .5),
-                                   riskfree_rate=(0, .05, .01),
-                                   steps_per_year=widgets.IntSlider(min=1, max=12, step=1, value=12,
-                                                          description="Rebals/Year"),
-                                   y_max=widgets.IntSlider(min=0, max=100, step=1, value=100,
-                                                          description="Zoom Y Axis")
-)
-display(cppi_controls)
