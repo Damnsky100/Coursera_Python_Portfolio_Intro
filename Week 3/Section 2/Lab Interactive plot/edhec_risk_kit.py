@@ -487,16 +487,17 @@ def show_gbm(n_scenarios, mu, sigma):
     
 import matplotlib.pyplot as plt
 import numpy as np
-
+import ipywidgets as widgets
+from IPython.display import display
 def show_cppi(n_scenarios=50, mu=0.07, sigma=0.15, m=3, floor=0., riskfree_rate=0.03, steps_per_year=12, y_max=100):
     """
     Plot the results of a Monte Carlo Simulation of CPPI
     """
     start = 100
-    sim_rets = erk.gbm(n_scenarios=n_scenarios, mu=mu, sigma=sigma, prices=False, steps_per_year=steps_per_year)
+    sim_rets = gbm(n_scenarios=n_scenarios, mu=mu, sigma=sigma, prices=False, steps_per_year=steps_per_year)
     risky_r = pd.DataFrame(sim_rets)
     # run the "back"-test
-    btr = erk.run_cppi(risky_r=pd.DataFrame(risky_r),riskfree_rate=riskfree_rate,m=m, start=start, floor=floor)
+    btr = run_cppi(risky_r=pd.DataFrame(risky_r),riskfree_rate=riskfree_rate,m=m, start=start, floor=floor)
     wealth = btr["Wealth"]
 
     # calculate terminal wealth stats
